@@ -76,6 +76,44 @@ export default function CulturalJournal() {
   }
   function del(id) { setEntries(e => e.filter(x => x.id !== id)); }
 
+  function exportEntries() {
+    const dataStr = JSON.stringify(entries, null, 2);
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `director-journal-backup-${new Date().toISOString().split("T")[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importEntries() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const imported = JSON.parse(event.target.result);
+          if (Array.isArray(imported)) {
+            setEntries(imported);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2500);
+          } else {
+            alert("Invalid file format. Please use a previously exported journal backup.");
+          }
+        } catch (err) {
+          alert("Error reading file. Make sure it's a valid JSON backup.");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }
+
   const filtered = archiveFilter === "all" ? entries : entries.filter(e => e.type === archiveFilter);
   const c = season.color;
 
@@ -113,153 +151,4 @@ export default function CulturalJournal() {
         .iq-opt{display:flex;align-items:flex-start;gap:12px;padding:13px 16px;background:rgba(255,255,255,0.5);border:1px solid rgba(0,0,0,0.08);border-radius:3px;cursor:pointer;transition:border-color .2s,background .2s;font-size:14px;line-height:1.55;color:#3a322e;font-weight:300;}
         .iq-opt:hover{background:rgba(255,255,255,0.8);border-color:${c}55;}
         .iq-opt.selected{background:${season.bgCard};border-color:${c}90;color:#1a1816;}
-        .iq-radio{width:14px;height:14px;border-radius:50%;border:1.5px solid ${c}80;flex-shrink:0;margin-top:3px;display:flex;align-items:center;justify-content:center;transition:background .15s;}
-        .iq-radio.sel{background:${c};border-color:${c};}
-        .iq-radio.sel::after{content:'';width:5px;height:5px;border-radius:50%;background:white;}
-        .closing-label{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#9a8e88;margin-bottom:4px;display:block;}
-        .closing-sub{font-size:13px;color:#a09488;margin-bottom:11px;font-weight:300;}
-        .closing-divider{width:48px;height:1px;background:${c}40;margin:32px 0 28px;}
-        .save-row{display:flex;align-items:center;justify-content:space-between;margin-top:6px;flex-wrap:wrap;gap:12px;}
-        .save-note{font-size:13px;color:#9a8e88;font-weight:300;}
-        .save-btn{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.22em;text-transform:uppercase;background:${c};color:white;border:none;padding:11px 30px;cursor:pointer;border-radius:2px;transition:opacity .2s,transform .15s;font-weight:500;}
-        .save-btn:hover{opacity:.87;transform:translateY(-1px);}
-        .save-btn:active{transform:translateY(0);}
-        .saved-flash{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:${c};animation:fadeIn .3s ease;}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-        .af-row{display:flex;gap:8px;margin-bottom:28px;flex-wrap:wrap;}
-        .af-btn{font-family:'Jost',sans-serif;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;background:none;border:1px solid rgba(0,0,0,0.12);padding:6px 16px;border-radius:2px;cursor:pointer;color:#8a7e78;transition:all .2s;}
-        .af-btn:hover{color:#2a2320;border-color:rgba(0,0,0,0.25);}
-        .af-btn.active{background:${c};color:white;border-color:${c};}
-        .ec{background:rgba(255,255,255,0.65);border:1px solid rgba(0,0,0,0.08);border-radius:4px;padding:26px 30px 22px;margin-bottom:26px;position:relative;transition:box-shadow .2s;}
-        .ec:hover{box-shadow:0 4px 18px rgba(0,0,0,0.07);}
-        .ec-stripe{position:absolute;top:0;left:0;bottom:0;width:3px;border-radius:4px 0 0 4px;}
-        .ec-type{font-family:'Jost',sans-serif;font-size:8.5px;letter-spacing:.22em;text-transform:uppercase;color:#a09488;margin-bottom:6px;}
-        .ec-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px;}
-        .ec-date{font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.13em;text-transform:uppercase;}
-        .ec-time{font-size:12px;color:#9a8e88;font-weight:300;}
-        .ec-sec{margin-bottom:14px;}
-        .ec-sec-title{font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#a09488;margin-bottom:4px;}
-        .ec-sec-body{font-size:14px;line-height:1.72;color:#3a322e;white-space:pre-wrap;font-weight:300;}
-        .del-btn{position:absolute;top:18px;right:18px;background:none;border:none;font-size:16px;color:#c0b4ae;cursor:pointer;padding:4px;line-height:1;transition:color .2s;}
-        .del-btn:hover{color:#b05030;}
-        .empty{text-align:center;padding:80px 24px;color:#9a8e88;font-size:15px;font-weight:300;}
-        @media(max-width:640px){.jh{padding:18px 18px 14px;}.nav{padding:0 18px;}.main{padding:26px 18px 50px;}.jh-title{font-size:21px;}}
-      `}</style>
-
-      <div className="jh">
-        <div>
-          <div className="jh-inst">Secretariat · Cultural Affairs</div>
-          <div className="jh-title">Director's Journal</div>
-          <div className="season-badge"><span>{season.glyph}</span><span>{season.label} {now.getFullYear()}</span></div>
-        </div>
-        <div className="jh-meta"><div>{fmtDate(now)}</div><div>{time}</div></div>
-      </div>
-
-      <div className="nav">
-        {[["daily","Daily Entry"],["weekly","Weekly Integration"],["archive",`Archive${entries.length ? ` (${entries.length})` : ""}`]].map(([k,l]) => (
-          <button key={k} className={`nt${view===k?" active":""}`} onClick={() => { setView(k); setSaved(false); }}>{l}</button>
-        ))}
-      </div>
-
-      <div className="main">
-        {view === "daily" && (<>
-          <div className="datestamp">
-            <span className="ds-glyph">{season.glyph}</span>
-            <span className="ds-text">{fmtDate(now)} · {time}</span>
-            <span className="ds-line" />
-          </div>
-          {DAILY_FIELDS.map(f => (
-            <div className="fb" key={f.key}>
-              <div className="fl"><span className="fl-icon">{f.icon}</span><span>{f.label}</span><span className="fl-div"/></div>
-              <div className="fl-sub">{f.sub}</div>
-              <textarea rows={f.rows} placeholder={f.placeholder} value={daily[f.key]} onChange={e => setDaily(d => ({...d,[f.key]:e.target.value}))} />
-            </div>
-          ))}
-          <div className="fb">
-            <span className="closing-label">Additional Notes</span>
-            <div className="closing-sub">Anything else that belongs in the record…</div>
-            <textarea rows={3} placeholder="Further observations, impressions, fragments…" value={daily.notes} onChange={e => setDaily(d => ({...d,notes:e.target.value}))} />
-          </div>
-          <div className="save-row">
-            {saved ? <span className="saved-flash">✦ Entry Recorded</span> : <span className="save-note">Entries are stored locally.</span>}
-            <button className="save-btn" onClick={saveDaily}>Commit to Record</button>
-          </div>
-        </>)}
-
-        {view === "weekly" && (<>
-          <div className="datestamp">
-            <span className="ds-glyph">{season.glyph}</span>
-            <span className="ds-text">{weekLabel(now)} · {fmtDate(now)}</span>
-            <span className="ds-line" />
-          </div>
-          {WEEKLY_SECTIONS.map(s => (
-            <div className="fb" key={s.key}>
-              <div className="section-num">{s.num}</div>
-              <div className="fl"><span className="fl-icon">{s.icon}</span><span>{s.label}</span><span className="fl-div"/></div>
-              <div className="fl-sub">{s.sub}</div>
-              <textarea rows={s.rows} placeholder={s.placeholder} value={weekly[s.key]} onChange={e => setWeekly(w => ({...w,[s.key]:e.target.value}))} />
-            </div>
-          ))}
-          <div className="fb">
-            <div className="section-num">5</div>
-            <div className="iq-label"><span className="fl-icon">◈</span><span>Integration Question</span><span className="fl-div"/></div>
-            <div className="iq-sub">Choose one question to sit with.</div>
-            <div className="iq-options">
-              {INTEGRATION_QUESTIONS.map((q, i) => (
-                <div key={i} className={`iq-opt${selectedIQ===q?" selected":""}`} onClick={() => setSelectedIQ(selectedIQ===q?null:q)}>
-                  <div className={`iq-radio${selectedIQ===q?" sel":""}`}/>
-                  <span>{q}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="closing-divider"/>
-          <div className="fb">
-            <span className="closing-label">Closing</span>
-            <div className="closing-sub">Any final reflection to seal this week's record.</div>
-            <textarea rows={3} placeholder="How do you leave this week behind and step into the next one?…" value={weekly.w_closing} onChange={e => setWeekly(w => ({...w,w_closing:e.target.value}))} />
-          </div>
-          <div className="save-row">
-            {saved ? <span className="saved-flash">✦ Week Recorded</span> : <span className="save-note">Stored locally in your browser.</span>}
-            <button className="save-btn" onClick={saveWeekly}>Seal the Week</button>
-          </div>
-        </>)}
-
-        {view === "archive" && (<>
-          <div className="af-row">
-            {[["all","All"],["daily","Daily"],["weekly","Weekly"]].map(([k,l]) => (
-              <button key={k} className={`af-btn${archiveFilter===k?" active":""}`} onClick={() => setArchiveFilter(k)}>{l}</button>
-            ))}
-          </div>
-          {filtered.length === 0
-            ? <div className="empty">No entries in this view yet.</div>
-            : filtered.map(e => {
-              const s = SEASONS[e.season] || season;
-              const isWeekly = e.type === "weekly";
-              const sectionDefs = isWeekly
-                ? [{key:"w_state",label:"Current State"},{key:"w_happened",label:"What Actually Happened"},{key:"w_embodied",label:"Embodied Signals"},{key:"w_structural",label:"Structural Observations"},{key:"w_iq",label:"Integration Question"},{key:"w_principle",label:"Principle"},{key:"w_adjustment",label:"One Adjustment"},{key:"w_closing",label:"Closing"}]
-                : [{key:"state",label:"Current State"},{key:"decisions",label:"Key Decisions"},{key:"breakthroughs",label:"Creative Breakthroughs & Challenges"},{key:"questions",label:"Emerging Questions"},{key:"notes",label:"Additional Notes"}];
-              return (
-                <div className="ec" key={e.id}>
-                  <div className="ec-stripe" style={{background:s.color}}/>
-                  <button className="del-btn" onClick={() => del(e.id)}>×</button>
-                  <div className="ec-type">{isWeekly ? `Weekly Integration · ${e.week||""}` : "Daily Entry"}</div>
-                  <div className="ec-meta">
-                    <span className="ec-date" style={{color:s.color}}>{e.date}</span>
-                    <span className="ec-time">{e.time} · {s.label}</span>
-                  </div>
-                  {sectionDefs.map(sd => e[sd.key] ? (
-                    <div className="ec-sec" key={sd.key}>
-                      <div className="ec-sec-title">{sd.label}</div>
-                      <div className="ec-sec-body">{e[sd.key]}</div>
-                    </div>
-                  ) : null)}
-                </div>
-              );
-            })
-          }
-        </>)}
-      </div>
-    </div>
-  );
-}
+        .iq-radio{width:14px;height:14px;border-radius:50%;border:1.5px solid ${c}80;flex-shrink:0;margin-top:3px;display:flex;align-items:center
