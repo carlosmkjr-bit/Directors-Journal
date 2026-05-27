@@ -46,45 +46,82 @@ const WEEKLY_SECTIONS = [
 const INIT_DAILY = { state: "", decisions: "", breakthroughs: "", questions: "", notes: "" };
 const INIT_WEEKLY = { w_state: "", w_happened: "", w_embodied: "", w_structural: "", w_iq: "", w_principle: "", w_adjustment: "", w_closing: "" };
 
+
+
+// Safari-compatible voice hook
+// Safari doesn't support continuous=true reliably, so we use non-continuous
+// and restart automatically after each result until user stops
 function useVoice(onResult) {
   const [listening, setListening] = useState(false);
   const [activeKey, setActiveKey] = useState(null);
   const recRef = useRef(null);
-  const supported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+  const activeKeyRef = useRef(null);
+  const listeningRef = useRef(false);
 
-  const start = useCallback((key) => {
-    if (!supported) return;
-    if (recRef.current) { recRef.current.stop(); }
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const SR = typeof window !== "undefined"
+    ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+    : null;
+  const supported = !!SR;
+
+  const startRec = useCallback((key) => {
+    if (!SR) return;
     const rec = new SR();
-    rec.continuous = true;
+    rec.continuous = false; // Safari-safe
     rec.interimResults = false;
     rec.lang = "en-US";
     rec.onresult = (e) => {
-      const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
-      onResult(key, transcript);
+      const transcript = Array.from(e.results)
+        .filter(r => r.isFinal)
+        .map(r => r[0].transcript)
+        .join(" ");
+      if (transcript) onResult(key, transcript);
     };
-    rec.onend = () => { setListening(false); setActiveKey(null); };
-    rec.onerror = () => { setListening(false); setActiveKey(null); };
-    rec.start();
-    recRef.current = rec;
+    rec.onend = () => {
+      // Auto-restart if still meant to be listening (Safari stops after silence)
+      if (listeningRef.current && activeKeyRef.current === key) {
+        try { startRec(key); } catch(e) { /* ignore */ }
+      }
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        listeningRef.current = false;
+        setListening(false);
+        setActiveKey(null);
+      }
+      // On other errors (network, aborted) just let onend handle restart
+    };
+    try {
+      rec.start();
+      recRef.current = rec;
+    } catch(e) { /* already started */ }
+  }, [SR, onResult]);
+
+  const start = useCallback((key) => {
+    if (!supported) return;
+    if (recRef.current) { try { recRef.current.abort(); } catch(e) {} }
+    activeKeyRef.current = key;
+    listeningRef.current = true;
     setListening(true);
     setActiveKey(key);
-  }, [supported, onResult]);
+    startRec(key);
+  }, [supported, startRec]);
 
   const stop = useCallback(() => {
-    if (recRef.current) { recRef.current.stop(); recRef.current = null; }
+    listeningRef.current = false;
+    activeKeyRef.current = null;
+    if (recRef.current) { try { recRef.current.abort(); } catch(e) {} recRef.current = null; }
     setListening(false);
     setActiveKey(null);
   }, []);
 
   const toggle = useCallback((key) => {
-    if (listening && activeKey === key) { stop(); } else { start(key); }
-  }, [listening, activeKey, start, stop]);
+    if (listeningRef.current && activeKeyRef.current === key) { stop(); } else { start(key); }
+  }, [start, stop]);
 
   return { listening, activeKey, toggle, stop, supported };
 }
 
+// Recording banner
 function RecordingBanner({ listening, stop }) {
   if (!listening) return null;
   return (
@@ -108,6 +145,7 @@ function RecordingBanner({ listening, stop }) {
   );
 }
 
+// Mic button component
 function MicBtn({ fieldKey, activeKey, listening, toggle, color }) {
   const isActive = listening && activeKey === fieldKey;
   return (
@@ -237,10 +275,9 @@ export default function CulturalJournal() {
         textarea::placeholder{color:#b0a49e;}
         .mic-btn{position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--mic-color);background:white;color:var(--mic-color);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;padding:0;}
         .mic-btn:hover{background:var(--mic-color);color:white;}
-        .mic-active{background:var(--mic-color) !important;color:white !important;animation:pulse 1.2s infinite;}
+        .mic-active{background:var(--mic-color) !important;color:white !important;box-shadow:0 0 0 4px var(--mic-color,#7eb87a)22,0 0 12px var(--mic-color,#7eb87a)44;animation:pulse 1.2s infinite;}
         @keyframes pulse{0%,100%{box-shadow:0 0 0 4px var(--mic-color)22;}50%{box-shadow:0 0 0 8px var(--mic-color)11;}}
-        @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
-        .voice-hint{font-size:11px;color:#e53e3e;margin-top:5px;font-weight:400;}
+        .voice-hint{font-size:11px;color:#b0a49e;margin-top:5px;font-weight:300;}
         .iq-label{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:${c};margin-bottom:4px;display:flex;align-items:center;gap:10px;}
         .iq-sub{font-size:13px;color:#8a7e78;margin-bottom:14px;font-weight:300;}
         .iq-options{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
@@ -272,7 +309,7 @@ export default function CulturalJournal() {
         .export-btn:hover{opacity:.85;}
         .import-btn{background:none;border:1px solid ${c};color:${c};}
         .import-btn:hover{background:${c}14;}
-        .import-msg{font-size:12px;color:${c};font-weight:500;letter-spacing:.05em;}
+        .import-msg{font-size:12px;color:${c};font-weight:500;letter-spacing:.05em;animation:fadeIn .3s ease;}
         .archive-divider{height:1px;background:rgba(0,0,0,0.06);margin-bottom:24px;}
         .ec{background:rgba(255,255,255,0.65);border:1px solid rgba(0,0,0,0.08);border-radius:4px;padding:26px 30px 22px;margin-bottom:26px;position:relative;transition:box-shadow .2s;}
         .ec:hover{box-shadow:0 4px 18px rgba(0,0,0,0.07);}
@@ -291,7 +328,6 @@ export default function CulturalJournal() {
       `}</style>
 
       <RecordingBanner listening={listening} stop={stop} />
-
       <div className="jh">
         <div>
           <div className="jh-inst">Secretariat · Cultural Affairs</div>
