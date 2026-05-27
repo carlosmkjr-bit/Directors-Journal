@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const SEASONS = {
   spring: { label: "Spring", glyph: "✦", color: "#7eb87a", bg: "#f4f9f0", bgCard: "rgba(126,184,122,0.06)" },
@@ -46,6 +46,86 @@ const WEEKLY_SECTIONS = [
 const INIT_DAILY = { state: "", decisions: "", breakthroughs: "", questions: "", notes: "" };
 const INIT_WEEKLY = { w_state: "", w_happened: "", w_embodied: "", w_structural: "", w_iq: "", w_principle: "", w_adjustment: "", w_closing: "" };
 
+function useVoice(onResult) {
+  const [listening, setListening] = useState(false);
+  const [activeKey, setActiveKey] = useState(null);
+  const recRef = useRef(null);
+  const supported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+
+  const start = useCallback((key) => {
+    if (!supported) return;
+    if (recRef.current) { recRef.current.stop(); }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+    rec.onresult = (e) => {
+      const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
+      onResult(key, transcript);
+    };
+    rec.onend = () => { setListening(false); setActiveKey(null); };
+    rec.onerror = () => { setListening(false); setActiveKey(null); };
+    rec.start();
+    recRef.current = rec;
+    setListening(true);
+    setActiveKey(key);
+  }, [supported, onResult]);
+
+  const stop = useCallback(() => {
+    if (recRef.current) { recRef.current.stop(); recRef.current = null; }
+    setListening(false);
+    setActiveKey(null);
+  }, []);
+
+  const toggle = useCallback((key) => {
+    if (listening && activeKey === key) { stop(); } else { start(key); }
+  }, [listening, activeKey, start, stop]);
+
+  return { listening, activeKey, toggle, stop, supported };
+}
+
+function RecordingBanner({ listening, stop }) {
+  if (!listening) return null;
+  return (
+    <div style={{
+      position:"fixed",top:0,left:0,right:0,zIndex:9999,
+      background:"#e53e3e",color:"white",padding:"12px 24px",
+      display:"flex",alignItems:"center",justifyContent:"space-between",
+      fontFamily:"'Jost',sans-serif",fontSize:"13px",fontWeight:500,
+      letterSpacing:".05em",boxShadow:"0 2px 12px rgba(229,62,62,0.4)"
+    }}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+        <span style={{width:10,height:10,borderRadius:"50%",background:"white",display:"inline-block",animation:"blink 1s infinite"}}/>
+        RECORDING — speak now
+      </div>
+      <button onClick={stop} style={{
+        background:"rgba(255,255,255,0.25)",border:"1px solid rgba(255,255,255,0.5)",
+        color:"white",padding:"5px 14px",borderRadius:"2px",cursor:"pointer",
+        fontFamily:"'Jost',sans-serif",fontSize:"11px",letterSpacing:".1em",fontWeight:600
+      }}>■ STOP</button>
+    </div>
+  );
+}
+
+function MicBtn({ fieldKey, activeKey, listening, toggle, color }) {
+  const isActive = listening && activeKey === fieldKey;
+  return (
+    <button
+      className={`mic-btn${isActive ? " mic-active" : ""}`}
+      onClick={() => toggle(fieldKey)}
+      title={isActive ? "Stop recording" : "Speak to type"}
+      style={{ "--mic-color": isActive ? "#e53e3e" : color }}
+    >
+      {isActive ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/></svg>
+      )}
+    </button>
+  );
+}
+
 export default function CulturalJournal() {
   const now = new Date();
   const sk = getSeason(now.getMonth());
@@ -61,6 +141,16 @@ export default function CulturalJournal() {
   const [archiveFilter, setArchiveFilter] = useState("all");
   const [importMsg, setImportMsg] = useState("");
   const importRef = useRef();
+
+  const handleVoiceResult = useCallback((key, transcript) => {
+    if (DAILY_FIELDS.find(f => f.key === key) || key === "notes") {
+      setDaily(d => ({ ...d, [key]: (d[key] ? d[key] + " " : "") + transcript }));
+    } else {
+      setWeekly(w => ({ ...w, [key]: (w[key] ? w[key] + " " : "") + transcript }));
+    }
+  }, []);
+
+  const { listening, activeKey, toggle, stop, supported } = useVoice(handleVoiceResult);
 
   useEffect(() => { const t = setInterval(() => setTime(fmtTime(new Date())), 30000); return () => clearInterval(t); }, []);
   useEffect(() => { try { localStorage.setItem("cj_e2", JSON.stringify(entries)); } catch {} }, [entries]);
@@ -141,9 +231,16 @@ export default function CulturalJournal() {
         .fl-icon{font-size:14px;opacity:.75;}
         .fl-div{flex:1;height:1px;background:${c}28;}
         .fl-sub{font-size:13px;color:#8a7e78;margin-bottom:11px;line-height:1.5;font-weight:300;}
-        textarea{width:100%;background:rgba(255,255,255,0.58);border:1px solid rgba(0,0,0,0.09);border-radius:3px;padding:14px 17px;font-family:'Jost',sans-serif;font-size:15px;line-height:1.78;color:#2a2320;resize:vertical;transition:border-color .2s,box-shadow .2s;outline:none;font-weight:300;}
+        .textarea-wrap{position:relative;}
+        textarea{width:100%;background:rgba(255,255,255,0.58);border:1px solid rgba(0,0,0,0.09);border-radius:3px;padding:14px 44px 14px 17px;font-family:'Jost',sans-serif;font-size:15px;line-height:1.78;color:#2a2320;resize:vertical;transition:border-color .2s,box-shadow .2s;outline:none;font-weight:300;}
         textarea:focus{border-color:${c}80;box-shadow:0 0 0 3px ${c}12;background:rgba(255,255,255,0.85);}
         textarea::placeholder{color:#b0a49e;}
+        .mic-btn{position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--mic-color);background:white;color:var(--mic-color);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;padding:0;}
+        .mic-btn:hover{background:var(--mic-color);color:white;}
+        .mic-active{background:var(--mic-color) !important;color:white !important;animation:pulse 1.2s infinite;}
+        @keyframes pulse{0%,100%{box-shadow:0 0 0 4px var(--mic-color)22;}50%{box-shadow:0 0 0 8px var(--mic-color)11;}}
+        @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+        .voice-hint{font-size:11px;color:#e53e3e;margin-top:5px;font-weight:400;}
         .iq-label{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:${c};margin-bottom:4px;display:flex;align-items:center;gap:10px;}
         .iq-sub{font-size:13px;color:#8a7e78;margin-bottom:14px;font-weight:300;}
         .iq-options{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
@@ -163,9 +260,10 @@ export default function CulturalJournal() {
         .save-btn:active{transform:translateY(0);}
         .saved-flash{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:${c};animation:fadeIn .3s ease;}
         @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+        @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
         .af-row{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center;justify-content:space-between;}
         .af-filters{display:flex;gap:8px;flex-wrap:wrap;}
-        .af-actions{display:flex;gap:8px;flex-wrap:wrap;}
+        .af-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
         .af-btn{font-family:'Jost',sans-serif;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;background:none;border:1px solid rgba(0,0,0,0.12);padding:6px 16px;border-radius:2px;cursor:pointer;color:#8a7e78;transition:all .2s;}
         .af-btn:hover{color:#2a2320;border-color:rgba(0,0,0,0.25);}
         .af-btn.active{background:${c};color:white;border-color:${c};}
@@ -174,7 +272,7 @@ export default function CulturalJournal() {
         .export-btn:hover{opacity:.85;}
         .import-btn{background:none;border:1px solid ${c};color:${c};}
         .import-btn:hover{background:${c}14;}
-        .import-msg{font-size:12px;color:${c};font-weight:500;letter-spacing:.05em;animation:fadeIn .3s ease;}
+        .import-msg{font-size:12px;color:${c};font-weight:500;letter-spacing:.05em;}
         .archive-divider{height:1px;background:rgba(0,0,0,0.06);margin-bottom:24px;}
         .ec{background:rgba(255,255,255,0.65);border:1px solid rgba(0,0,0,0.08);border-radius:4px;padding:26px 30px 22px;margin-bottom:26px;position:relative;transition:box-shadow .2s;}
         .ec:hover{box-shadow:0 4px 18px rgba(0,0,0,0.07);}
@@ -191,6 +289,8 @@ export default function CulturalJournal() {
         .empty{text-align:center;padding:80px 24px;color:#9a8e88;font-size:15px;font-weight:300;}
         @media(max-width:640px){.jh{padding:18px 18px 14px;}.nav{padding:0 18px;}.main{padding:26px 18px 50px;}.jh-title{font-size:21px;}.af-row{flex-direction:column;align-items:flex-start;}}
       `}</style>
+
+      <RecordingBanner listening={listening} stop={stop} />
 
       <div className="jh">
         <div>
@@ -218,13 +318,21 @@ export default function CulturalJournal() {
             <div className="fb" key={f.key}>
               <div className="fl"><span className="fl-icon">{f.icon}</span><span>{f.label}</span><span className="fl-div"/></div>
               <div className="fl-sub">{f.sub}</div>
-              <textarea rows={f.rows} placeholder={f.placeholder} value={daily[f.key]} onChange={e => setDaily(d => ({...d,[f.key]:e.target.value}))} />
+              <div className="textarea-wrap">
+                <textarea rows={f.rows} placeholder={f.placeholder} value={daily[f.key]} onChange={e => setDaily(d => ({...d,[f.key]:e.target.value}))} />
+                {supported && <MicBtn fieldKey={f.key} activeKey={activeKey} listening={listening} toggle={toggle} color={c} />}
+              </div>
+              {listening && activeKey === f.key && <div className="voice-hint">● Recording… tap mic to stop</div>}
             </div>
           ))}
           <div className="fb">
             <span className="closing-label">Additional Notes</span>
             <div className="closing-sub">Anything else that belongs in the record…</div>
-            <textarea rows={3} placeholder="Further observations, impressions, fragments…" value={daily.notes} onChange={e => setDaily(d => ({...d,notes:e.target.value}))} />
+            <div className="textarea-wrap">
+              <textarea rows={3} placeholder="Further observations, impressions, fragments…" value={daily.notes} onChange={e => setDaily(d => ({...d,notes:e.target.value}))} />
+              {supported && <MicBtn fieldKey="notes" activeKey={activeKey} listening={listening} toggle={toggle} color={c} />}
+            </div>
+            {listening && activeKey === "notes" && <div className="voice-hint">● Recording… tap mic to stop</div>}
           </div>
           <div className="save-row">
             {saved ? <span className="saved-flash">✦ Entry Recorded</span> : <span className="save-note">Entries are stored locally.</span>}
@@ -243,7 +351,11 @@ export default function CulturalJournal() {
               <div className="section-num">{s.num}</div>
               <div className="fl"><span className="fl-icon">{s.icon}</span><span>{s.label}</span><span className="fl-div"/></div>
               <div className="fl-sub">{s.sub}</div>
-              <textarea rows={s.rows} placeholder={s.placeholder} value={weekly[s.key]} onChange={e => setWeekly(w => ({...w,[s.key]:e.target.value}))} />
+              <div className="textarea-wrap">
+                <textarea rows={s.rows} placeholder={s.placeholder} value={weekly[s.key]} onChange={e => setWeekly(w => ({...w,[s.key]:e.target.value}))} />
+                {supported && <MicBtn fieldKey={s.key} activeKey={activeKey} listening={listening} toggle={toggle} color={c} />}
+              </div>
+              {listening && activeKey === s.key && <div className="voice-hint">● Recording… tap mic to stop</div>}
             </div>
           ))}
           <div className="fb">
@@ -263,7 +375,11 @@ export default function CulturalJournal() {
           <div className="fb">
             <span className="closing-label">Closing</span>
             <div className="closing-sub">Any final reflection to seal this week's record.</div>
-            <textarea rows={3} placeholder="How do you leave this week behind and step into the next one?…" value={weekly.w_closing} onChange={e => setWeekly(w => ({...w,w_closing:e.target.value}))} />
+            <div className="textarea-wrap">
+              <textarea rows={3} placeholder="How do you leave this week behind and step into the next one?…" value={weekly.w_closing} onChange={e => setWeekly(w => ({...w,w_closing:e.target.value}))} />
+              {supported && <MicBtn fieldKey="w_closing" activeKey={activeKey} listening={listening} toggle={toggle} color={c} />}
+            </div>
+            {listening && activeKey === "w_closing" && <div className="voice-hint">● Recording… tap mic to stop</div>}
           </div>
           <div className="save-row">
             {saved ? <span className="saved-flash">✦ Week Recorded</span> : <span className="save-note">Stored locally in your browser.</span>}
