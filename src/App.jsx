@@ -57,6 +57,8 @@ function useVoice(onResult) {
   const recRef = useRef(null);
   const activeKeyRef = useRef(null);
   const listeningRef = useRef(false);
+  const onResultRef = useRef(onResult);
+  useEffect(() => { onResultRef.current = onResult; }, [onResult]);
 
   const SR = typeof window !== "undefined"
     ? (window.SpeechRecognition || window.webkitSpeechRecognition)
@@ -66,7 +68,7 @@ function useVoice(onResult) {
   const startRec = useCallback((key) => {
     if (!SR) return;
     const rec = new SR();
-    rec.continuous = false; // Safari-safe
+    rec.continuous = false;
     rec.interimResults = false;
     rec.lang = "en-US";
     rec.onresult = (e) => {
@@ -74,7 +76,7 @@ function useVoice(onResult) {
         .filter(r => r.isFinal)
         .map(r => r[0].transcript)
         .join(" ");
-      if (transcript) onResult(key, transcript);
+      if (transcript) onResultRef.current(key, transcript);
     };
     rec.onend = () => {
       // Auto-restart if still meant to be listening (Safari stops after silence)
@@ -94,7 +96,7 @@ function useVoice(onResult) {
       rec.start();
       recRef.current = rec;
     } catch(e) { /* already started */ }
-  }, [SR, onResult]);
+  }, [SR]);
 
   const start = useCallback((key) => {
     if (!supported) return;
