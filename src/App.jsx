@@ -46,23 +46,14 @@ const WEEKLY_SECTIONS = [
 const INIT_DAILY = { state: "", decisions: "", breakthroughs: "", questions: "", notes: "" };
 const INIT_WEEKLY = { w_state: "", w_happened: "", w_embodied: "", w_structural: "", w_iq: "", w_principle: "", w_adjustment: "", w_closing: "" };
 
-
-
 // Safari-compatible voice hook
-// Safari doesn't support continuous=true reliably, so we use non-continuous
-// and restart automatically after each result until user stops
 function useVoice(onResult) {
   const [listening, setListening] = useState(false);
   const [activeKey, setActiveKey] = useState(null);
   const recRef = useRef(null);
   const activeKeyRef = useRef(null);
   const listeningRef = useRef(false);
-  const onResultRef = useRef(onResult);
-  useEffect(() => { onResultRef.current = onResult; }, [onResult]);
-
-  const SR = typeof window !== "undefined"
-    ? (window.SpeechRecognition || window.webkitSpeechRecognition)
-    : null;
+  const SR = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const supported = !!SR;
 
   const startRec = useCallback((key) => {
@@ -72,16 +63,12 @@ function useVoice(onResult) {
     rec.interimResults = false;
     rec.lang = "en-US";
     rec.onresult = (e) => {
-      const transcript = Array.from(e.results)
-        .filter(r => r.isFinal)
-        .map(r => r[0].transcript)
-        .join(" ");
-      if (transcript) onResultRef.current(key, transcript);
+      const transcript = Array.from(e.results).filter(r => r.isFinal).map(r => r[0].transcript).join(" ");
+      if (transcript) onResult(key, transcript);
     };
     rec.onend = () => {
-      // Auto-restart if still meant to be listening (Safari stops after silence)
       if (listeningRef.current && activeKeyRef.current === key) {
-        try { startRec(key); } catch(e) { /* ignore */ }
+        try { startRec(key); } catch(e) {}
       }
     };
     rec.onerror = (e) => {
@@ -90,13 +77,9 @@ function useVoice(onResult) {
         setListening(false);
         setActiveKey(null);
       }
-      // On other errors (network, aborted) just let onend handle restart
     };
-    try {
-      rec.start();
-      recRef.current = rec;
-    } catch(e) { /* already started */ }
-  }, [SR]);
+    try { rec.start(); recRef.current = rec; } catch(e) {}
+  }, [SR, onResult]);
 
   const start = useCallback((key) => {
     if (!supported) return;
@@ -123,7 +106,6 @@ function useVoice(onResult) {
   return { listening, activeKey, toggle, stop, supported };
 }
 
-// Recording banner
 function RecordingBanner({ listening, stop }) {
   if (!listening) return null;
   return (
@@ -147,26 +129,74 @@ function RecordingBanner({ listening, stop }) {
   );
 }
 
-// Mic button component
 function MicBtn({ fieldKey, activeKey, listening, toggle, color }) {
   const isActive = listening && activeKey === fieldKey;
   return (
-    <button
-      className={`mic-btn${isActive ? " mic-active" : ""}`}
-      onClick={() => toggle(fieldKey)}
-      title={isActive ? "Stop recording" : "Speak to type"}
-      style={{ "--mic-color": isActive ? "#e53e3e" : color }}
-    >
-      {isActive ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/></svg>
-      )}
+    <button className={`mic-btn${isActive ? " mic-active" : ""}`} onClick={() => toggle(fieldKey)}
+      title={isActive ? "Stop recording" : "Speak to type"} style={{ "--mic-color": isActive ? "#e53e3e" : color }}>
+      {isActive
+        ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z"/></svg>
+      }
     </button>
   );
 }
 
+// Archive entry with inline edit mode
+function ArchiveEntry({ entry, s, sectionDefs, isWeekly, onDelete, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(entry);
+
+  function save() {
+    onSave(entry.id, draft);
+    setEditing(false);
+  }
+  function cancel() {
+    setDraft(entry);
+    setEditing(false);
+  }
+
+  return (
+    <div className="ec" style={{borderColor: editing ? `${s.color}60` : undefined}}>
+      <div className="ec-stripe" style={{background:s.color}}/>
+      {!editing && <button className="del-btn" onClick={() => onDelete(entry.id)}>×</button>}
+      <div className="ec-type">{isWeekly ? `Weekly Integration · ${entry.week||""}` : "Daily Entry"}</div>
+      <div className="ec-meta">
+        <span className="ec-date" style={{color:s.color}}>{entry.date}</span>
+        <span className="ec-time">{entry.time} · {s.label}</span>
+      </div>
+      {editing ? (<>
+        {sectionDefs.filter(sd => sd.key !== "w_iq").map(sd => (
+          <div className="ec-sec" key={sd.key}>
+            <div className="ec-sec-title">{sd.label}</div>
+            <textarea
+              style={{width:"100%",background:"rgba(255,255,255,0.8)",border:`1px solid ${s.color}60`,borderRadius:3,padding:"10px 14px",fontFamily:"'Jost',sans-serif",fontSize:"14px",lineHeight:1.72,color:"#2a2320",resize:"vertical",outline:"none",fontWeight:300,minHeight:60}}
+              value={draft[sd.key] || ""}
+              onChange={e => setDraft(d => ({...d,[sd.key]:e.target.value}))}
+            />
+          </div>
+        ))}
+        <div style={{display:"flex",gap:8,marginTop:12,justifyContent:"flex-end"}}>
+          <button onClick={cancel} style={{fontFamily:"'Jost',sans-serif",fontSize:"9.5px",letterSpacing:".16em",textTransform:"uppercase",background:"none",border:"1px solid rgba(0,0,0,0.15)",padding:"7px 18px",borderRadius:2,cursor:"pointer",color:"#8a7e78"}}>Cancel</button>
+          <button onClick={save} style={{fontFamily:"'Jost',sans-serif",fontSize:"9.5px",letterSpacing:".16em",textTransform:"uppercase",background:s.color,color:"white",border:"none",padding:"7px 18px",borderRadius:2,cursor:"pointer",fontWeight:600}}>Save Changes</button>
+        </div>
+      </>) : (<>
+        {sectionDefs.map(sd => entry[sd.key] ? (
+          <div className="ec-sec" key={sd.key}>
+            <div className="ec-sec-title">{sd.label}</div>
+            <div className="ec-sec-body">{entry[sd.key]}</div>
+          </div>
+        ) : null)}
+        <div style={{marginTop:14,textAlign:"right"}}>
+          <button onClick={() => setEditing(true)} style={{fontFamily:"'Jost',sans-serif",fontSize:"9.5px",letterSpacing:".16em",textTransform:"uppercase",background:"none",border:`1px solid ${s.color}`,color:s.color,padding:"6px 16px",borderRadius:2,cursor:"pointer",transition:"all .2s"}}>✎ Edit</button>
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 export default function CulturalJournal() {
+
   const now = new Date();
   const sk = getSeason(now.getMonth());
   const season = SEASONS[sk];
@@ -207,6 +237,7 @@ export default function CulturalJournal() {
     setWeekly(INIT_WEEKLY); setSelectedIQ(null); setSaved(true); setTimeout(() => setSaved(false), 2500);
   }
   function del(id) { setEntries(e => e.filter(x => x.id !== id)); }
+  function updateEntry(id, updated) { setEntries(prev => prev.map(x => x.id === id ? {...x, ...updated} : x)); }
 
   function handleExport() {
     const data = JSON.stringify(entries, null, 2);
@@ -277,9 +308,11 @@ export default function CulturalJournal() {
         textarea::placeholder{color:#b0a49e;}
         .mic-btn{position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--mic-color);background:white;color:var(--mic-color);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;padding:0;}
         .mic-btn:hover{background:var(--mic-color);color:white;}
-        .mic-active{background:var(--mic-color) !important;color:white !important;box-shadow:0 0 0 4px var(--mic-color,#7eb87a)22,0 0 12px var(--mic-color,#7eb87a)44;animation:pulse 1.2s infinite;}
+        .mic-active{background:var(--mic-color) !important;color:white !important;animation:pulse 1.2s infinite;}
         @keyframes pulse{0%,100%{box-shadow:0 0 0 4px var(--mic-color)22;}50%{box-shadow:0 0 0 8px var(--mic-color)11;}}
-        .voice-hint{font-size:11px;color:#b0a49e;margin-top:5px;font-weight:300;}
+        @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+        .voice-hint{font-size:11px;color:#e53e3e;margin-top:5px;font-weight:400;}
         .iq-label{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:${c};margin-bottom:4px;display:flex;align-items:center;gap:10px;}
         .iq-sub{font-size:13px;color:#8a7e78;margin-bottom:14px;font-weight:300;}
         .iq-options{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
@@ -298,8 +331,6 @@ export default function CulturalJournal() {
         .save-btn:hover{opacity:.87;transform:translateY(-1px);}
         .save-btn:active{transform:translateY(0);}
         .saved-flash{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:${c};animation:fadeIn .3s ease;}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-        @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
         .af-row{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center;justify-content:space-between;}
         .af-filters{display:flex;gap:8px;flex-wrap:wrap;}
         .af-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
@@ -311,7 +342,7 @@ export default function CulturalJournal() {
         .export-btn:hover{opacity:.85;}
         .import-btn{background:none;border:1px solid ${c};color:${c};}
         .import-btn:hover{background:${c}14;}
-        .import-msg{font-size:12px;color:${c};font-weight:500;letter-spacing:.05em;animation:fadeIn .3s ease;}
+        .import-msg{font-size:12px;color:${c};font-weight:500;letter-spacing:.05em;}
         .archive-divider{height:1px;background:rgba(0,0,0,0.06);margin-bottom:24px;}
         .ec{background:rgba(255,255,255,0.65);border:1px solid rgba(0,0,0,0.08);border-radius:4px;padding:26px 30px 22px;margin-bottom:26px;position:relative;transition:box-shadow .2s;}
         .ec:hover{box-shadow:0 4px 18px rgba(0,0,0,0.07);}
@@ -330,6 +361,7 @@ export default function CulturalJournal() {
       `}</style>
 
       <RecordingBanner listening={listening} stop={stop} />
+
       <div className="jh">
         <div>
           <div className="jh-inst">Secretariat · Cultural Affairs</div>
@@ -449,21 +481,15 @@ export default function CulturalJournal() {
                 ? [{key:"w_state",label:"Current State"},{key:"w_happened",label:"What Actually Happened"},{key:"w_embodied",label:"Embodied Signals"},{key:"w_structural",label:"Structural Observations"},{key:"w_iq",label:"Integration Question"},{key:"w_principle",label:"Principle"},{key:"w_adjustment",label:"One Adjustment"},{key:"w_closing",label:"Closing"}]
                 : [{key:"state",label:"Current State"},{key:"decisions",label:"Key Decisions"},{key:"breakthroughs",label:"Creative Breakthroughs & Challenges"},{key:"questions",label:"Emerging Questions"},{key:"notes",label:"Additional Notes"}];
               return (
-                <div className="ec" key={e.id}>
-                  <div className="ec-stripe" style={{background:s.color}}/>
-                  <button className="del-btn" onClick={() => del(e.id)}>×</button>
-                  <div className="ec-type">{isWeekly ? `Weekly Integration · ${e.week||""}` : "Daily Entry"}</div>
-                  <div className="ec-meta">
-                    <span className="ec-date" style={{color:s.color}}>{e.date}</span>
-                    <span className="ec-time">{e.time} · {s.label}</span>
-                  </div>
-                  {sectionDefs.map(sd => e[sd.key] ? (
-                    <div className="ec-sec" key={sd.key}>
-                      <div className="ec-sec-title">{sd.label}</div>
-                      <div className="ec-sec-body">{e[sd.key]}</div>
-                    </div>
-                  ) : null)}
-                </div>
+                <ArchiveEntry
+                  key={e.id}
+                  entry={e}
+                  s={s}
+                  sectionDefs={sectionDefs}
+                  isWeekly={isWeekly}
+                  onDelete={del}
+                  onSave={updateEntry}
+                />
               );
             })
           }
